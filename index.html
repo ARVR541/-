@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вычисление детерминанта матрицы</title>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <link rel="stylesheet" href="redesign.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Вычисление детерминанта матрицы</h1>
+            <p>Пошаговое решение с точными вычислениями</p>
+        </div>
+        
+        <div class="content">
+            <div class="settings-grid">
+                <div class="setting-group">
+                    <h3>Размерность матрицы</h3>
+                    <div class="form-group">
+                        <label for="matrixSize">Размер n (2-8):</label>
+                        <input type="number" id="matrixSize" min="2" max="8" value="3">
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Метод вычисления</h3>
+                    <div class="form-group">
+                        <label for="method">Метод:</label>
+                        <select id="method">
+                            <option value="sarrus">Саррюс (только 3×3)</option>
+                            <option value="laplace">Разложение по строке/столбцу (Laplace)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="autoSelect">
+                            <label for="autoSelect">Автовыбор строки/столбца с нулями</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Параметры Laplace</h3>
+                    <div class="form-group">
+                        <label for="laplaceDirection">Направление:</label>
+                        <select id="laplaceDirection">
+                            <option value="row">По строке</option>
+                            <option value="col">По столбцу</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="laplaceIndex">Индекс (1-based):</label>
+                        <input type="number" id="laplaceIndex" min="1" value="1">
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Настройки вывода</h3>
+                    <div class="form-group">
+                        <label for="precision">Точность десятичного вывода:</label>
+                        <input type="number" id="precision" min="0" max="12" value="6">
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showSteps" checked>
+                            <label for="showSteps">Показывать шаги</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="matrix-input">
+                <h3>Ввод матрицы</h3>
+                <div id="matrixContainer"></div>
+                <div class="info">
+                    <strong>Поддержка вставки:</strong> Строки разделены переводами строки, столбцы — пробелом, табом, запятой или точкой с запятой.
+                </div>
+            </div>
+            
+            <div class="buttons">
+                <button onclick="generateRandomMatrix()">Случайная матрица</button>
+                <button onclick="clearMatrix()">Очистить</button>
+                <button onclick="loadExamples()">Примеры</button>
+                <button onclick="calculateDeterminant()">Посчитать</button>
+                <button onclick="copySolution()" id="copyBtn" disabled>Копировать решение</button>
+            </div>
+            
+            <div id="solution" class="solution" style="display: none;">
+                <h3>Решение</h3>
+                <div id="solutionContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class Rational {
+            constructor(num, den = 1n) {
+                if (typeof num === 'string') {
+                    const parsed = this.parseNumber(num);
+                    this.num = parsed.num;
+                    this.den = parsed.den;
+                } else if (typeof num === 'number') {
+                    const parsed = this.parseNumber(num.toString());
+                    this.num = parsed.num;
+                    this.den = parsed.den;
+                } else {
+                    this.num = BigInt(num);
+                    this.den = BigInt(den);
+                }
+                this.normalize();
+            }
+            parseNumber(str) {
+                str = str.trim();
+                if (str.includes('e') || str.includes('E')) {
+                    const [mantissa, exponent] = str.toLowerCase().split('e');
+                    const exp = parseInt(exponent);
+                    const mantissaNum = new Rational(mantissa);
+                    const power = new Rational(1, 10n ** BigInt(Math.abs(exp)));
+                    return exp >= 0 ? mantissaNum.mul(power) : mantissaNum.div(power);
+                }
+                
+                if (str.includes('.')) {
+                    const [intPart, fracPart] = str.split('.');
+                    const denominator = 10n ** BigInt(fracPart.length);
+                    const numerator = BigInt(intPart || '0') * denominator + BigInt(fracPart);
+                    return { num: numerator, den: denominator };
+                }
+            
+                return { num: BigInt(str), den: 1n };
+            }
+
+            gcd(a, b) {
+                a = a < 0n ? -a : a;
+                b = b < 0n ? -b : b;
+                while (b !== 0n) {
+                    [a, b] = [b, a % b];
+                }
+                return a;
+            }
+
+            normalize() {
+                if (this.den === 0n) throw new Error('Division by zero');
+                
+                const g = this.gcd(this.num, this.den);
+                this.num /= g;
+                this.den /= g;
+                
+                if (this.den < 0n) {
+                    this.num = -this.num;
+                    this.den = -this.den;
+                }
+            }
+
+            add(other) {
+                const num = this.num * other.den + other.num * this.den;
+                const den = this.den * other.den;
+                return new Rational(num, den);
+            }
+
+            sub(other) {
+                const num = this.num * other.den - other.num * this.den;
+                const den = this.den * other.den;
+                return new Rational(num, den);
+            }
+
+            mul(other) {
+                const num = this.num * other.num;
+                const den = this.den * other.den;
+                return new Rational(num, den);
+            }
+
+            div(other) {
+                if (other.isZero()) throw new Error('Division by zero');
+                const num = this.num * other.den;
+                const den = this.den * other.num;
+                return new Rational(num, den);
+            }
+
+            neg() {
+                return new Rational(-this.num, this.den);
+            }
+
+            isZero() {
+                return this.num === 0n;
+            }
+
+            toString() {
+                if (this.den === 1n) {
+                    return this.num.toString();
+                }
+                return `${this.num}/${this.den}`;
+            }
+
+            toDecimal(precision = 6) {
+                const sign = this.num < 0n ? -1 : 1;
+                const absNum = this.num < 0n ? -this.num : this.num;
+                
+                let result = '';
+                let quotient = absNum / this.den;
+                let remainder = absNum % this.den;
+                
+                if (sign < 0) result += '-';
+                result += quotient.toString();
+                
+                if (remainder !== 0n && precision > 0) {
+                    result += '.';
+                    for (let i = 0; i < precision; i++) {
+                        remainder *= 10n;
+                        result += (remainder / this.den).toString();
+                        remainder %= this.den;
+                        if (remainder === 0n) break;
+                    }
+                }
+                
+                return result;
+            }
+        }
+
+        let matrix = [];
+        let solutionText = '';
+
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+            createMatrixInput();
+            updateUI();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('matrixSize').addEventListener('input', function() {
+                createMatrixInput();
+                updateUI();
+            });
+            
+            document.getElementById('method').addEventListener('change', updateUI);
+            document.getElementById('autoSelect').addEventListener('change', updateUI);
+            document.getElementById('showSteps').addEventListener('change', updateUI);
+        }
+
+        function createMatrixInput() {
+            const size = parseInt(document.getElementById('matrixSize').value);
+            const container = document.getElementById('matrixContainer');
+            
+            let html = '<table class="matrix-table">';
+            for (let i = 0; i < size; i++) {
+                html += '<tr>';
+                for (let j = 0; j < size; j++) {
+                    html += `<td><input type="text" id="cell_${i}_${j}" value="0" placeholder="0"></td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</table>';
+            
+            container.innerHTML = html;
+            
+            const inputs = container.querySelectorAll('input');
+            inputs.forEach(input => {
+                input.addEventListener('paste', handlePaste);
+            });
+        }
+
+        function handlePaste(e) {
+            e.preventDefault();
+            const pastedData = (e.clipboardData || window.clipboardData).getData('text');
+            const rows = pastedData.trim().split('\n');
+            const size = parseInt(document.getElementById('matrixSize').value);
+            
+            const matrix = [];
+            for (let i = 0; i < Math.min(rows.length, size); i++) {
+                const row = rows[i].trim().split(/[\s,;]+/);
+                matrix[i] = [];
+                for (let j = 0; j < Math.min(row.length, size); j++) {
+                    matrix[i][j] = row[j] || '0';
+                }
+            }
+            
+            for (let i = 0; i < size; i++) {
+                for (let j = 0; j < size; j++) {
+                    const input = document.getElementById(`cell_${i}_${j}`);
+                    if (matrix[i] && matrix[i][j] !== undefined) {
+                        input.value = matrix[i][j];
+                    }
+                }
+            }
+        }
+
+        function updateUI() {
+            const size = parseInt(document.getElementById('matrixSize').value);
+            const method = document.getElementById('method').value;
+            const autoSelect = document.getElementById('autoSelect').checked;
+            
+            const sarrusOption = document.getElementById('method').options[0];
+            if (size === 3) {
+                sarrusOption.disabled = false;
+            } else {
+                sarrusOption.disabled = true;
+                if (method === 'sarrus') {
+                    document.getElementById('method').value = 'laplace';
+                }
+            }
+            
+            const laplaceParams = document.querySelectorAll('#laplaceDirection, #laplaceIndex');
+            laplaceParams.forEach(param => {
+                param.disabled = method === 'sarrus' || autoSelect;
+            });
+            
+            document.getElementById('laplaceIndex').max = size;
+            if (parseInt(document.getElementById('laplaceIndex').value) > size) {
+                document.getElementById('laplaceIndex').value = size;
+            }
+            
+            showWarnings(size);
+        }
+
+        function showWarnings(size) {
+            let warnings = [];
+            
+            if (size > 6) {
+                warnings.push('⚠️ Большие матрицы могут давать много шагов вычисления');
+            }
+            
+            if (size > 8) {
+                warnings.push('🚨 Размер больше 8 не поддерживается из-за взрывного роста сложности O(n!)');
+            }
+            
+            const oldWarnings = document.querySelectorAll('.warning');
+            oldWarnings.forEach(w => w.remove());
+            
+            warnings.forEach(text => {
+                const warning = document.createElement('div');
+                warning.className = 'warning';
+                warning.textContent = text;
+                document.querySelector('.matrix-input').appendChild(warning);
+            });
+        }
+
+        function getMatrix() {
+            const size = parseInt(document.getElementById('matrixSize').value);
+            const matrix = [];
+            
+            for (let i = 0; i < size; i++) {
+                matrix[i] = [];
+                for (let j = 0; j < size; j++) {
+                    const value = document.getElementById(`cell_${i}_${j}`).value.trim();
+                    if (value === '') {
+                        matrix[i][j] = new Rational(0);
+                    } else {
+                        try {
+                            matrix[i][j] = new Rational(value);
+                        } catch (e) {
+                            throw new Error(`Неверное значение в позиции (${i+1}, ${j+1}): ${value}`);
+                        }
+                    }
+                }
+            }
+            
+            return matrix;
+        }
+
+        function generateRandomMatrix() {
+            const size = parseInt(document.getElementById('matrixSize').value);
+            
+            for (let i = 0; i < size; i++) {
+                for (let j = 0; j < size; j++) {
+                    const value = (Math.random() - 0.5) * 10;
+                    document.getElementById(`cell_${i}_${j}`).value = Math.round(value * 100) / 100;
+                }
+            }
+        }
+
+        function clearMatrix() {
+            const inputs = document.querySelectorAll('#matrixContainer input');
+            inputs.forEach(input => input.value = '0');
+        }
+
+        function loadExamples() {
+            const size = parseInt(document.getElementById('matrixSize').value);
+            
+            if (size === 3) {
+                const example = [
+                    ['1', '2', '3'],
+                    ['0', '1', '4'],
+                    ['5', '6', '0']
+                ];
+                fillMatrix(example);
+                document.getElementById('method').value = 'sarrus';
+            } else if (size === 4) {
+                const example = [
+                    ['1', '0', '2', '0'],
+                    ['0', '3', '0', '0'],
+                    ['4', '0', '5', '0'],
+                    ['0', '0', '0', '6']
+                ];
+                fillMatrix(example);
+                document.getElementById('method').value = 'laplace';
+                document.getElementById('laplaceDirection').value = 'row';
+                document.getElementById('laplaceIndex').value = '1';
+                document.getElementById('autoSelect').checked = true;
+            } else if (size === 2) {
+                const example = [
+                    ['0.5', '0'],
+                    ['0', '0.2']
+                ];
+                fillMatrix(example);
+                document.getElementById('method').value = 'laplace';
+            }
+            
+            updateUI();
+        }
+
+        function fillMatrix(values) {
+            const size = values.length;
+            for (let i = 0; i < size; i++) {
+                for (let j = 0; j < size; j++) {
+                    document.getElementById(`cell_${i}_${j}`).value = values[i][j];
+                }
+            }
+        }
+
+        function calculateDeterminant() {
+            const calculateBtn = document.querySelector('button[onclick="calculateDeterminant()"]');
+            const originalText = calculateBtn.textContent;
+            
+            try {
+                calculateBtn.innerHTML = '<span class="loading"></span> Вычисляем...';
+                calculateBtn.disabled = true;
+                
+                setTimeout(() => {
+                    try {
+                        const matrix = getMatrix();
+                        const size = matrix.length;
+                        const method = document.getElementById('method').value;
+                        
+                        if (size > 8) {
+                            throw new Error('Размер матрицы не может быть больше 8');
+                        }
+                        
+                        let result;
+                        let trace;
+                        
+                        if (method === 'sarrus' && size === 3) {
+                            [result, trace] = sarrus3x3(matrix);
+                        } else {
+                            const direction = document.getElementById('laplaceDirection').value;
+                            let index = parseInt(document.getElementById('laplaceIndex').value) - 1;
+                            const autoSelect = document.getElementById('autoSelect').checked;
+                            
+                            if (autoSelect) {
+                                index = findBestRowOrColumn(matrix, direction);
+                            }
+                            
+                            [result, trace] = laplaceDet(matrix, direction, index, true);
+                        }
+                        
+                        displaySolution(result, trace);
+                        
+                        calculateBtn.innerHTML = '✅ Готово!';
+                        calculateBtn.classList.add('success-animation');
+                        
+                        setTimeout(() => {
+                            calculateBtn.textContent = originalText;
+                            calculateBtn.classList.remove('success-animation');
+                        }, 2000);
+                        
+                    } catch (error) {
+                        showError(error.message);
+                        calculateBtn.textContent = originalText;
+                    } finally {
+                        calculateBtn.disabled = false;
+                    }
+                }, 500);
+                
+            } catch (error) {
+                showError(error.message);
+                calculateBtn.textContent = originalText;
+                calculateBtn.disabled = false;
+            }
+        }
+
+        function sarrus3x3(matrix) {
+            const trace = {
+                type: 'sarrus',
+                formula: 'det(A) = a₁₁·a₂₂·a₃₃ + a₁₂·a₂₃·a₃₁ + a₁₃·a₂₁·a₃₂ - (a₁₃·a₂₂·a₃₁ + a₁₁·a₂₃·a₃₂ + a₁₂·a₂₁·a₃₃)',
+                positiveTerms: [],
+                negativeTerms: [],
+                sumPositive: null,
+                sumNegative: null,
+                result: null
+            };
+            
+            const pos1 = matrix[0][0].mul(matrix[1][1]).mul(matrix[2][2]);
+            const pos2 = matrix[0][1].mul(matrix[1][2]).mul(matrix[2][0]);
+            const pos3 = matrix[0][2].mul(matrix[1][0]).mul(matrix[2][1]);
+            
+            trace.positiveTerms = [
+                { formula: 'a₁₁·a₂₂·a₃₃', values: `${matrix[0][0]}·${matrix[1][1]}·${matrix[2][2]}`, result: pos1 },
+                { formula: 'a₁₂·a₂₃·a₃₁', values: `${matrix[0][1]}·${matrix[1][2]}·${matrix[2][0]}`, result: pos2 },
+                { formula: 'a₁₃·a₂₁·a₃₂', values: `${matrix[0][2]}·${matrix[1][0]}·${matrix[2][1]}`, result: pos3 }
+            ];
+            
+            const neg1 = matrix[0][2].mul(matrix[1][1]).mul(matrix[2][0]);
+            const neg2 = matrix[0][0].mul(matrix[1][2]).mul(matrix[2][1]);
+            const neg3 = matrix[0][1].mul(matrix[1][0]).mul(matrix[2][2]);
+            
+            trace.negativeTerms = [
+                { formula: 'a₁₃·a₂₂·a₃₁', values: `${matrix[0][2]}·${matrix[1][1]}·${matrix[2][0]}`, result: neg1 },
+                { formula: 'a₁₁·a₂₃·a₃₂', values: `${matrix[0][0]}·${matrix[1][2]}·${matrix[2][1]}`, result: neg2 },
+                { formula: 'a₁₂·a₂₁·a₃₃', values: `${matrix[0][1]}·${matrix[1][0]}·${matrix[2][2]}`, result: neg3 }
+            ];
+            
+            trace.sumPositive = pos1.add(pos2).add(pos3);
+            trace.sumNegative = neg1.add(neg2).add(neg3);
+            trace.result = trace.sumPositive.sub(trace.sumNegative);
+            
+            return [trace.result, trace];
+        }
+
+        function laplaceDet(matrix, direction, index, traceEnabled = true, depth = 0) {
+            const size = matrix.length;
+            
+            if (size === 2) {
+                return det2x2(matrix, traceEnabled, depth);
+            }
+            
+            if (size === 3) {
+                return sarrus3x3(matrix);
+            }
+            
+            const trace = {
+                type: 'laplace',
+                direction,
+                index,
+                size,
+                terms: [],
+                result: new Rational(0)
+            };
+            
+            let result = new Rational(0);
+            
+            for (let k = 0; k < size; k++) {
+                const i = direction === 'row' ? index : k;
+                const j = direction === 'col' ? index : k;
+                const element = matrix[i][j];
+                
+                if (!element.isZero()) {
+                    const minor = getMinor(matrix, i, j);
+                    const [minorDet, minorTrace] = laplaceDet(minor, 'row', 0, traceEnabled, depth + 1);
+                    const cofactor = element.mul(minorDet);
+                    const sign = (i + j) % 2 === 0 ? 1 : -1;
+                    const termValue = new Rational(sign).mul(cofactor);
+                    
+                    result = result.add(termValue);
+                    
+                    if (traceEnabled) {
+                        trace.terms.push({
+                            i: i + 1,
+                            j: j + 1,
+                            element,
+                            minor,
+                            minorDet,
+                            cofactor,
+                            sign,
+                            termValue,
+                            subTrace: minorTrace
+                        });
+                    }
+                }
+            }
+            
+            trace.result = result;
+            return [result, trace];
+        }
+
+        function det2x2(matrix, traceEnabled = true, depth = 0) {
+            const trace = {
+                type: '2x2',
+                formula: 'ad - bc',
+                a: matrix[0][0],
+                b: matrix[0][1],
+                c: matrix[1][0],
+                d: matrix[1][1],
+                ad: matrix[0][0].mul(matrix[1][1]),
+                bc: matrix[0][1].mul(matrix[1][0]),
+                result: null
+            };
+            
+            trace.result = trace.ad.sub(trace.bc);
+            return [trace.result, trace];
+        }
+
+        function getMinor(matrix, row, col) {
+            const size = matrix.length;
+            const minor = [];
+            let minorRow = 0;
+            
+            for (let i = 0; i < size; i++) {
+                if (i !== row) {
+                    minor[minorRow] = [];
+                    let minorCol = 0;
+                    for (let j = 0; j < size; j++) {
+                        if (j !== col) {
+                            minor[minorRow][minorCol] = matrix[i][j];
+                            minorCol++;
+                        }
+                    }
+                    minorRow++;
+                }
+            }
+            
+            return minor;
+        }
+
+        function findBestRowOrColumn(matrix, direction) {
+            const size = matrix.length;
+            let bestIndex = 0;
+            let maxZeros = 0;
+            
+            for (let i = 0; i < size; i++) {
+                let zeros = 0;
+                for (let j = 0; j < size; j++) {
+                    const element = direction === 'row' ? matrix[i][j] : matrix[j][i];
+                    if (element.isZero()) zeros++;
+                }
+                if (zeros > maxZeros) {
+                    maxZeros = zeros;
+                    bestIndex = i;
+                }
+            }
+            
+            return bestIndex;
+        }
+
+        function renderMatrix(matrix) {
+            const size = matrix.length;
+            let matrixStr = '\\begin{pmatrix}\n';
+            
+            for (let i = 0; i < size; i++) {
+                matrixStr += '  ';
+                for (let j = 0; j < size; j++) {
+                    matrixStr += matrix[i][j].toString();
+                    if (j < size - 1) matrixStr += ' & ';
+                }
+                if (i < size - 1) matrixStr += ' \\\\';
+                matrixStr += '\n';
+            }
+            matrixStr += '\\end{pmatrix}';
+            
+            return `
+                <div class="step">
+                    <h4>📋 Исходная матрица</h4>
+                    <div class="formula-box">
+                        <div class="math">$$A = ${matrixStr}$$</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderMinorMatrix(minor) {
+            if (!minor || minor.length === 0) return '\\emptyset';
+            
+            const size = minor.length;
+            let matrixStr = '\\begin{pmatrix}\n';
+            
+            for (let i = 0; i < size; i++) {
+                matrixStr += '  ';
+                for (let j = 0; j < size; j++) {
+                    matrixStr += minor[i][j].toString();
+                    if (j < size - 1) matrixStr += ' & ';
+                }
+                if (i < size - 1) matrixStr += ' \\\\';
+                matrixStr += '\n';
+            }
+            matrixStr += '\\end{pmatrix}';
+            
+            return matrixStr;
+        }
+
+        function displaySolution(result, trace) {
+            const solutionDiv = document.getElementById('solution');
+            const contentDiv = document.getElementById('solutionContent');
+            const showSteps = document.getElementById('showSteps').checked;
+            const precision = parseInt(document.getElementById('precision').value);
+            
+            let html = '';
+            solutionText = '';
+            
+            try {
+                const matrix = getMatrix();
+                html += renderMatrix(matrix);
+            } catch (e) {
+            }
+            
+            if (showSteps) {
+                html += renderTrace(trace, 0);
+            }
+            
+            html += `
+                <div class="answer">
+                    <h3>🎯 Ответ</h3>
+                    <div class="math-display">
+                        <div class="math">
+                            $$\\det(A) = ${result.toString()}$$
+                        </div>
+                    </div>
+                    <div class="exact">Точно: ${result.toString()}</div>
+                    <div class="approximate">Приблизительно: ${result.toDecimal(precision)}</div>
+                </div>
+            `;
+            
+            contentDiv.innerHTML = html;
+            solutionDiv.style.display = 'block';
+            
+            solutionText = `Детерминант матрицы:\n\n`;
+            if (showSteps) {
+                solutionText += renderTraceText(trace, 0);
+            }
+            solutionText += `\nОтвет (точно): ${result.toString()}\n`;
+            solutionText += `Ответ (приблизительно): ${result.toDecimal(precision)}`;
+            
+            document.getElementById('copyBtn').disabled = false;
+            
+            if (window.MathJax) {
+                MathJax.typesetPromise([contentDiv]);
+            }
+        }
+
+        function renderTrace(trace, depth) {
+            let html = '';
+            const indent = '  '.repeat(depth);
+            
+            if (trace.type === 'sarrus') {
+                html += `
+                    <div class="step">
+                        <h4>🔺 Метод Саррюса (3×3)</h4>
+                        <div class="formula-box">
+                            <div class="math">$$\\det(A) = a_{11}a_{22}a_{33} + a_{12}a_{23}a_{31} + a_{13}a_{21}a_{32} - (a_{13}a_{22}a_{31} + a_{11}a_{23}a_{32} + a_{12}a_{21}a_{33})$$</div>
+                        </div>
+                        
+                        <h5>✅ Положительные слагаемые:</h5>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin: 15px 0;">
+                            ${trace.positiveTerms.map((term, i) => `
+                                <div class="term-box positive">
+                                    <div style="font-weight: 600; margin-bottom: 8px;">${i + 1}. ${term.formula}</div>
+                                    <div style="font-family: monospace; font-size: 0.9em; color: #666;">
+                                        ${term.values} = <strong>${term.result}</strong>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <h5>❌ Отрицательные слагаемые:</h5>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px; margin: 15px 0;">
+                            ${trace.negativeTerms.map((term, i) => `
+                                <div class="term-box negative">
+                                    <div style="font-weight: 600; margin-bottom: 8px;">${i + 1}. ${term.formula}</div>
+                                    <div style="font-family: monospace; font-size: 0.9em; color: #666;">
+                                        ${term.values} = <strong>${term.result}</strong>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div class="formula-box">
+                            <div class="math">
+                                $$S_+ = ${trace.sumPositive}$$<br>
+                                $$S_- = ${trace.sumNegative}$$<br>
+                                $$\\det = S_+ - S_- = ${trace.sumPositive} - ${trace.sumNegative} = \\boxed{${trace.result}}$$
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (trace.type === '2x2') {
+                html += `
+                    <div class="step">
+                        <h4>📐 Детерминант 2×2</h4>
+                        <div class="formula-box">
+                            <div class="math">$$\\det\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix} = ad - bc$$</div>
+                        </div>
+                        <div class="step-content">
+                            <strong>Подстановка значений:</strong>
+                            a = ${trace.a}, b = ${trace.b}, c = ${trace.c}, d = ${trace.d}
+                            
+                            <strong>Вычисления:</strong>
+                            ad = ${trace.a} × ${trace.d} = ${trace.ad}
+                            bc = ${trace.b} × ${trace.c} = ${trace.bc}
+                            
+                            <strong>Результат:</strong>
+                            det = ad - bc = ${trace.ad} - ${trace.bc} = ${trace.result}
+                        </div>
+                    </div>
+                `;
+            } else if (trace.type === 'laplace') {
+                const directionText = trace.direction === 'row' ? 'строке' : 'столбцу';
+                const directionSymbol = trace.direction === 'row' ? 'i' : 'j';
+                const sumIndex = trace.direction === 'row' ? 'k' : 'k';
+                const elementIndex = trace.direction === 'row' ? 'i,k' : 'k,j';
+                const minorIndex = trace.direction === 'row' ? 'i,k' : 'k,j';
+                
+                html += `
+                    <div class="step">
+                        <h4>🔍 Разложение по ${directionText} ${trace.index + 1}</h4>
+                        <div class="formula-box">
+                            <div class="math">
+                                $$\\det(A) = \\sum_{${sumIndex}=1}^{${trace.size}} (-1)^{${directionSymbol}+${sumIndex}} \\cdot a_{${elementIndex}} \\cdot M_{${minorIndex}}$$
+                            </div>
+                        </div>
+                `;
+                
+                trace.terms.forEach((term, i) => {
+                    const sign = term.sign > 0 ? '+' : '-';
+                    const power = (trace.index + i) % 2 === 0 ? 'i+k' : 'i+k';
+                    const signColor = term.sign > 0 ? '#27ae60' : '#e74c3c';
+                    
+                    const minorStr = renderMinorMatrix(term.minor);
+                    
+                    html += `
+                        <div class="trace-node">
+                            <h5>📊 Слагаемое ${i + 1}: $a_{${term.i},${term.j}} = ${term.element}$</h5>
+                            <div class="formula-box">
+                                <div class="math">
+                                    $$\\text{Знак: } ${sign}(-1)^{${power}} = ${sign}$$<br>
+                                    $$\\text{Элемент: } a_{${term.i},${term.j}} = ${term.element}$$<br>
+                                    $$\\text{Минор: } M_{${term.i},${term.j}} = ${minorStr}$$<br>
+                                    $$\\text{Кофактор: } C_{${term.i},${term.j}} = ${term.cofactor}$$<br>
+                                    $$\\text{Вклад: } ${term.termValue}$$
+                                </div>
+                            </div>
+                            ${renderTrace(term.subTrace, depth + 1)}
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        <div class="formula-box">
+                            <div class="math">
+                                $$\\text{Итого: } \\boxed{${trace.result}}$$
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return html;
+        }
+
+        function renderTraceText(trace, depth) {
+            let text = '';
+            const indent = '  '.repeat(depth);
+            
+            if (trace.type === 'sarrus') {
+                text += `${indent}Метод Саррюса (3×3)\n`;
+                text += `${indent}${trace.formula}\n\n`;
+                
+                text += `${indent}Положительные слагаемые:\n`;
+                trace.positiveTerms.forEach((term, i) => {
+                    text += `${indent}  ${i + 1}. ${term.formula} = ${term.values} = ${term.result}\n`;
+                });
+                
+                text += `\n${indent}Отрицательные слагаемые:\n`;
+                trace.negativeTerms.forEach((term, i) => {
+                    text += `${indent}  ${i + 1}. ${term.formula} = ${term.values} = ${term.result}\n`;
+                });
+                
+                text += `\n${indent}S₊ = ${trace.sumPositive}\n`;
+                text += `${indent}S₋ = ${trace.sumNegative}\n`;
+                text += `${indent}det = S₊ - S₋ = ${trace.result}\n\n`;
+            } else if (trace.type === '2x2') {
+                text += `${indent}Детерминант 2×2\n`;
+                text += `${indent}Формула: ${trace.formula}\n`;
+                text += `${indent}a = ${trace.a}, b = ${trace.b}, c = ${trace.c}, d = ${trace.d}\n`;
+                text += `${indent}ad = ${trace.a} × ${trace.d} = ${trace.ad}\n`;
+                text += `${indent}bc = ${trace.b} × ${trace.c} = ${trace.bc}\n`;
+                text += `${indent}det = ad - bc = ${trace.ad} - ${trace.bc} = ${trace.result}\n\n`;
+            } else if (trace.type === 'laplace') {
+                const directionText = trace.direction === 'row' ? 'строке' : 'столбцу';
+                text += `${indent}Разложение по ${directionText} ${trace.index + 1}\n`;
+                text += `${indent}Формула: det(A) = ∑ₖ (-1)^(i+k) × a_{i,k} × M_{i,k}\n\n`;
+                
+                trace.terms.forEach((term, i) => {
+                    const sign = term.sign > 0 ? '+' : '-';
+                    text += `${indent}  Слагаемое ${i + 1}: a_{${term.i},${term.j}} = ${term.element}\n`;
+                    text += `${indent}    Знак: ${sign}, Кофактор: ${term.cofactor}, Вклад: ${term.termValue}\n`;
+                    text += renderTraceText(term.subTrace, depth + 2);
+                });
+                
+                text += `${indent}Итого: ${trace.result}\n\n`;
+            }
+            
+            return text;
+        }
+
+        function showError(message) {
+            const solutionDiv = document.getElementById('solution');
+            const contentDiv = document.getElementById('solutionContent');
+            
+            contentDiv.innerHTML = `<div class="error">Ошибка: ${message}</div>`;
+            solutionDiv.style.display = 'block';
+            document.getElementById('copyBtn').disabled = true;
+        }
+
+        function copySolution() {
+            if (solutionText) {
+                navigator.clipboard.writeText(solutionText).then(() => {
+                    const btn = document.getElementById('copyBtn');
+                    const originalText = btn.textContent;
+                    const originalBg = btn.style.background;
+                    
+                    btn.innerHTML = '📋 Скопировано!';
+                    btn.style.background = 'linear-gradient(135deg, #28a745 0%, #20c997 100%)';
+                    btn.classList.add('success-animation');
+                    
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.style.background = originalBg;
+                        btn.classList.remove('success-animation');
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Ошибка копирования:', err);
+                    const btn = document.getElementById('copyBtn');
+                    btn.textContent = '❌ Ошибка';
+                    btn.style.background = '#e74c3c';
+                    setTimeout(() => {
+                        btn.textContent = 'Копировать решение';
+                        btn.style.background = '';
+                    }, 2000);
+                });
+            }
+        }
+    </script>
+</body>
+</html>
