@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вычисление детерминанта матрицы</title>
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="stylesheet" href="redesign.css">
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Вычисление детерминанта матрицы</h1>
+            <p>Пошаговое решение с точными вычислениями</p>
+        </div>
+        
+        <div class="content">
+            <div class="settings-grid">
+                <div class="setting-group">
+                    <h3>Размерность матрицы</h3>
+                    <div class="form-group">
+                        <label for="matrixSize">Размер n (2-8):</label>
+                        <input type="number" id="matrixSize" min="2" max="8" value="3">
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Метод вычисления</h3>
+                    <div class="form-group">
+                        <label for="method">Метод:</label>
+                        <select id="method">
+                            <option value="sarrus">Саррюс (только 3×3)</option>
+                            <option value="laplace">Разложение по строке/столбцу (Laplace)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="autoSelect">
+                            <label for="autoSelect">Автовыбор строки/столбца с нулями</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Параметры Laplace</h3>
+                    <div class="form-group">
+                        <label for="laplaceDirection">Направление:</label>
+                        <select id="laplaceDirection">
+                            <option value="row">По строке</option>
+                            <option value="col">По столбцу</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="laplaceIndex">Индекс (1-based):</label>
+                        <input type="number" id="laplaceIndex" min="1" value="1">
+                    </div>
+                </div>
+                
+                <div class="setting-group">
+                    <h3>Настройки вывода</h3>
+                    <div class="form-group">
+                        <label for="precision">Точность десятичного вывода:</label>
+                        <input type="number" id="precision" min="0" max="12" value="6">
+                    </div>
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="showSteps" checked>
+                            <label for="showSteps">Показывать шаги</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="matrix-input">
+                <h3>Ввод матрицы</h3>
+                <div id="matrixContainer"></div>
+                <div class="info">
+                    <strong>Поддержка вставки:</strong> Строки разделены переводами строки, столбцы — пробелом, табом, запятой или точкой с запятой.
+                </div>
+            </div>
+            
+            <div class="buttons">
+                <button id="randomBtn">Случайная матрица</button>
+                <button id="clearBtn">Очистить</button>
+                <button id="examplesBtn">Примеры</button>
+                <button id="calculateBtn">Посчитать</button>
+                <button id="copyBtn" disabled>Копировать решение</button>
+            </div>
+            
+            <div id="solution" class="solution" style="display: none;">
+                <h3>Решение</h3>
+                <div id="solutionContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./main.js"></script>
+
+</body>
+</html>
