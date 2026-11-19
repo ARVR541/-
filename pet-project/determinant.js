@@ -45,7 +45,7 @@ export function laplaceDet(matrix, direction, index, traceEnabled = true, depth 
         return det2x2(matrix, traceEnabled, depth);
     }
 
-    if (size === 3) {
+    if (size === 3 && depth > 0) {
         return sarrus3x3(matrix);
     }
 
